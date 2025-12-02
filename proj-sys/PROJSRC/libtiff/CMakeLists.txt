@@ -55,11 +55,7 @@ else()
   option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 endif()
 
-if (BUILD_SHARED_LIBS)
-  set(TIFF_STATIC_LIBS_DEFAULT FALSE)
-else()
-  set(TIFF_STATIC_LIBS_DEFAULT TRUE)
- endif()
+set(TIFF_STATIC_LIBS_DEFAULT TRUE)
 
 option(tiff-static "build TIFF static libraries" ${TIFF_STATIC_LIBS_DEFAULT})
 option(tiff-tools "build TIFF tools" ON)
