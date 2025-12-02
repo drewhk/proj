@@ -55,6 +55,9 @@ else()
   option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 endif()
 
+set(ZIP_SUPPORT ON)
+set(LIBDEFLATE_SUPPORT ON)
+
 set(TIFF_STATIC_LIBS_DEFAULT TRUE)
 
 option(tiff-static "build TIFF static libraries" ${TIFF_STATIC_LIBS_DEFAULT})
@@ -65,11 +68,11 @@ option(tiff-docs "build TIFF documentation" ON)
 option(tiff-deprecated "build TIFF deprecated features" OFF)
 option(tiff-install "install TIFF targets" ${TIFF_INSTALL_DEFAULT})
 
-if (tiff-static)
+#if (tiff-static)
   set(TIFF_BUILD_LIB_VALUE STATIC)
-else()
-  set(TIFF_BUILD_LIB_VALUE SHARED)
-endif()
+#else()
+#  set(TIFF_BUILD_LIB_VALUE SHARED)
+#endif()
 
 # Disable deprecated features to ensure clean build
 if (tiff-deprecated)
