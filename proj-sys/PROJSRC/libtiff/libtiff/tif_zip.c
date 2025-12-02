@@ -22,8 +22,14 @@
  * OF THIS SOFTWARE.
  */
 
+// Hack to enable everything
+#define ZIP_SUPPORT
+#define LIBDEFLATE_SUPPORT
+
 #include "tiffiop.h"
 #ifdef ZIP_SUPPORT
+
+
 /*
  * TIFF Library.
  *
