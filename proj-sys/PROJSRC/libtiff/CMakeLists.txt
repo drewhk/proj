@@ -55,8 +55,8 @@ else()
   option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 endif()
 
-set(ZIP_SUPPORT ON)
-set(LIBDEFLATE_SUPPORT ON)
+set(ZIP_SUPPORT TRUE)
+set(LIBDEFLATE_SUPPORT TRUE)
 
 set(TIFF_STATIC_LIBS_DEFAULT TRUE)
 
