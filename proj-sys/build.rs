@@ -1,6 +1,6 @@
 use flate2::read::GzDecoder;
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::path::PathBuf;
 use tar::Archive;
 
@@ -119,8 +119,96 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         }
     }
 
-    let path = format!("PROJSRC/proj-{MINIMUM_PROJ_VERSION}.tar.gz");
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    let zlib_paths = std::env::var("DEP_Z_ROOT").ok().map(|zlib_root_dir| {
+        let zlib_root = PathBuf::from(zlib_root_dir);
+        let zlib_include = zlib_root.join("include");
+        let zlib_lib_dir = zlib_root.join("lib");
+        let zlib_library = if env::var("TARGET")
+            .unwrap_or_default()
+            .contains("windows-msvc")
+        {
+            ["zlibstaticd.lib", "zlibstatic.lib", "z.lib"]
+                .into_iter()
+                .map(|name| zlib_lib_dir.join(name))
+                .find(|path| path.exists())
+                .unwrap_or_else(|| zlib_lib_dir.join("zlibstatic.lib"))
+        } else {
+            zlib_lib_dir.join("libz.a")
+        };
+
+        let zlib_link_name = zlib_library
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .map(|name| name.strip_prefix("lib").unwrap_or(name).to_string())
+            .unwrap_or_else(|| "z".to_string());
+
+        (
+            zlib_root,
+            zlib_include,
+            zlib_lib_dir,
+            zlib_library,
+            zlib_link_name,
+        )
+    });
+
+    let (tiff_include, tiff_lib_dir) = if cfg!(feature = "tiff") {
+        eprintln!("feature 'tiff' enabled — building libtiff from source");
+
+        let tiff_src = PathBuf::from("PROJSRC/libtiff");
+        if !tiff_src.exists() {
+            panic!(
+                "Missing libtiff source directory at {:?}. Did you vendor or clone it?",
+                tiff_src
+            );
+        }
+
+        let mut tiff_cfg = cmake::Config::new(&tiff_src);
+        tiff_cfg.profile("Release");
+        tiff_cfg.define("BUILD_SHARED_LIBS", "OFF");
+        tiff_cfg.define("tiff-tools", "OFF");
+        tiff_cfg.define("tiff-tests", "OFF");
+        tiff_cfg.define("tiff-docs", "OFF");
+        tiff_cfg.define("tiff-contrib", "OFF");
+        tiff_cfg.define("tiff-static", "ON");
+        tiff_cfg.define("libdeflate", "OFF");
+        tiff_cfg.define("zstd", "OFF");
+        tiff_cfg.define("lzma", "OFF");
+        tiff_cfg.define("webp", "OFF");
+        tiff_cfg.define("jpeg", "OFF");
+        tiff_cfg.define("jbig", "OFF");
+        tiff_cfg.define("lerc", "OFF");
+
+        if let Some((zlib_root, zlib_include, _, zlib_library, _)) = &zlib_paths {
+            tiff_cfg.define("ZLIB_ROOT", zlib_root.display().to_string());
+            tiff_cfg.define("ZLIB_INCLUDE_DIR", zlib_include.display().to_string());
+            tiff_cfg.define("ZLIB_LIBRARY", zlib_library.display().to_string());
+        }
+
+        let tiff_build = tiff_cfg.build();
+        let include = tiff_build.join("include");
+        let lib_dir = tiff_build.join("lib");
+        let cmake_package_dir = lib_dir.join("cmake").join("tiff");
+        if cmake_package_dir.exists() {
+            // PROJ's FindTIFF.cmake prefers libtiff's package config when it is present.
+            // The vendored config exports TIFF::tiff with a ZLIB::ZLIB dependency, but
+            // does not make that imported target available to PROJ's configure step.
+            // Removing it lets FindTIFF use the explicit TIFF_INCLUDE_DIR/TIFF_LIBRARY
+            // values we pass below.
+            fs::remove_dir_all(cmake_package_dir)?;
+        }
+
+        println!("cargo:rustc-link-search=native={}", lib_dir.display());
+        println!("cargo:rustc-link-lib=static=tiff");
+
+        (Some(include), Some(lib_dir))
+    } else {
+        eprintln!("feature 'tiff' disabled — skipping libtiff build");
+        (None, None)
+    };
+
+    let path = format!("PROJSRC/proj-{MINIMUM_PROJ_VERSION}.tar.gz");
     let tar_gz = File::open(path)?;
     let tar = GzDecoder::new(tar_gz);
     let mut archive = Archive::new(tar);
@@ -154,11 +242,38 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         config.define("SQLITE3_LIBRARY", format!("{sqlite_lib_dir}/libsqlite3.a",));
     }
 
-    if cfg!(feature = "tiff") {
-        eprintln!("enabling tiff support");
+    if let Some((zlib_root, zlib_include, zlib_lib_dir, zlib_library, zlib_link_name)) = &zlib_paths {
+        config.define("ZLIB_ROOT", zlib_root.display().to_string());
+        config.define("ZLIB_INCLUDE_DIR", zlib_include.display().to_string());
+        config.define("ZLIB_LIBRARY", zlib_library.display().to_string());
+
+        config.define("Z_INCLUDE_DIR", zlib_include.display().to_string());
+        config.define("Z_LIBRARY", zlib_library.display().to_string());
+
+        println!("cargo:rustc-link-search=native={}", zlib_lib_dir.display());
+        println!("cargo:rustc-link-lib=static={zlib_link_name}");
+    }
+
+    if let (Some(tiff_inc), Some(tiff_lib)) = (&tiff_include, &tiff_lib_dir) {
+        let target = env::var("TARGET").unwrap_or_default();
+        eprintln!("enabling TIFF support in PROJ build");
         config.define("ENABLE_TIFF", "ON");
+        config.define("TIFF_INCLUDE_DIR", tiff_inc.display().to_string());
+
+        let tiff_library = if target.contains("android") {
+            tiff_lib.join("libtiff.a")
+        } else if target.contains("windows") {
+            tiff_lib.join("tiff.lib")
+        } else {
+            tiff_lib.join("libtiff.a")
+        };
+
+        config.define("TIFF_LIBRARY", tiff_library.display().to_string());
+
+        println!("cargo:rustc-link-search=native={}", tiff_lib.display());
+        println!("cargo:rustc-link-lib=static=tiff");
     } else {
-        eprintln!("disabling tiff support");
+        eprintln!("disabling TIFF support in PROJ build");
         config.define("ENABLE_TIFF", "OFF");
     }
 
@@ -195,11 +310,6 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         "cargo:rustc-link-search={}",
         &out_path.join("build/lib").display()
     );
-
-    if cfg!(feature = "tiff") {
-        eprintln!("enabling tiff support");
-        config.define("ENABLE_TIFF", "ON");
-    }
 
     Ok(proj.join("include"))
 }
