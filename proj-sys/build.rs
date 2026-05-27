@@ -152,6 +152,9 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
             zlib_link_name,
         )
     });
+    if cfg!(feature = "tiff") && zlib_paths.is_none() {
+        panic!("feature 'tiff' requires bundled static zlib from libz-sys, but DEP_Z_ROOT was not provided");
+    }
 
     let (tiff_include, tiff_lib_dir) = if cfg!(feature = "tiff") {
         eprintln!("feature 'tiff' enabled — building libtiff from source");
