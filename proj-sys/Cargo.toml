@@ -13,11 +13,11 @@ rust-version = "1.82"
 
 [dependencies]
 libsqlite3-sys = { version = ">=0.28,<0.36", features = ["bundled"] }
-libz-sys = { version = "1.1.22", default-features = false, features = ["static", "zlib-ng-no-cmake-experimental-community-maintained"] }
 link-cplusplus = "1.0.6"
 
 [build-dependencies]
 bindgen = { version = "0.72.0" }
+cc = "1.0.98"
 pkg-config = "0.3.25"
 cmake = "0.1.50"
 flate2 = "1.1.1"

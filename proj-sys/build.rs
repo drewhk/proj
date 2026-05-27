@@ -1,10 +1,18 @@
 use flate2::read::GzDecoder;
 use std::env;
 use std::fs::{self, File};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tar::Archive;
 
 const MINIMUM_PROJ_VERSION: &str = "9.6.0";
+
+struct ZlibPaths {
+    root: PathBuf,
+    include: PathBuf,
+    lib_dir: PathBuf,
+    library: PathBuf,
+    link_name: String,
+}
 
 #[cfg(feature = "nobuild")]
 fn main() {} // Skip the build script on docs.rs
@@ -121,40 +129,11 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let zlib_paths = std::env::var("DEP_Z_ROOT").ok().map(|zlib_root_dir| {
-        let zlib_root = PathBuf::from(zlib_root_dir);
-        let zlib_include = zlib_root.join("include");
-        let zlib_lib_dir = zlib_root.join("lib");
-        let zlib_library = if env::var("TARGET")
-            .unwrap_or_default()
-            .contains("windows-msvc")
-        {
-            ["zlibstaticd.lib", "zlibstatic.lib", "z.lib"]
-                .into_iter()
-                .map(|name| zlib_lib_dir.join(name))
-                .find(|path| path.exists())
-                .unwrap_or_else(|| zlib_lib_dir.join("zlibstatic.lib"))
-        } else {
-            zlib_lib_dir.join("libz.a")
-        };
-
-        let zlib_link_name = zlib_library
-            .file_stem()
-            .and_then(|name| name.to_str())
-            .map(|name| name.strip_prefix("lib").unwrap_or(name).to_string())
-            .unwrap_or_else(|| "z".to_string());
-
-        (
-            zlib_root,
-            zlib_include,
-            zlib_lib_dir,
-            zlib_library,
-            zlib_link_name,
-        )
-    });
-    if cfg!(feature = "tiff") && zlib_paths.is_none() {
-        panic!("feature 'tiff' requires bundled static zlib from libz-sys, but DEP_Z_ROOT was not provided");
-    }
+    let zlib_paths = if cfg!(feature = "tiff") {
+        Some(build_vendored_zlib(&out_path)?)
+    } else {
+        None
+    };
 
     let (tiff_include, tiff_lib_dir) = if cfg!(feature = "tiff") {
         eprintln!("feature 'tiff' enabled — building libtiff from source");
@@ -183,13 +162,28 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         tiff_cfg.define("jbig", "OFF");
         tiff_cfg.define("lerc", "OFF");
 
-        if let Some((zlib_root, zlib_include, _, zlib_library, _)) = &zlib_paths {
-            tiff_cfg.define("ZLIB_ROOT", zlib_root.display().to_string());
-            tiff_cfg.define("ZLIB_INCLUDE_DIR", zlib_include.display().to_string());
-            tiff_cfg.define("ZLIB_LIBRARY", zlib_library.display().to_string());
+        if let Some(zlib) = &zlib_paths {
+            tiff_cfg.define("ZLIB_ROOT", zlib.root.display().to_string());
+            tiff_cfg.define("ZLIB_INCLUDE_DIR", zlib.include.display().to_string());
+            tiff_cfg.define("ZLIB_LIBRARY", zlib.library.display().to_string());
         }
 
+        let original_num_jobs = if env::var("TARGET").unwrap_or_default().contains("windows-msvc") {
+            let original = env::var_os("NUM_JOBS");
+            env::set_var("NUM_JOBS", "1");
+            Some(original)
+        } else {
+            None
+        };
+
         let tiff_build = tiff_cfg.build();
+
+        if let Some(original) = original_num_jobs {
+            match original {
+                Some(value) => env::set_var("NUM_JOBS", value),
+                None => env::remove_var("NUM_JOBS"),
+            }
+        }
         let include = tiff_build.join("include");
         let lib_dir = tiff_build.join("lib");
         let cmake_package_dir = lib_dir.join("cmake").join("tiff");
@@ -242,13 +236,13 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         config.define("SQLITE3_LIBRARY", format!("{sqlite_lib_dir}/libsqlite3.a",));
     }
 
-    if let Some((zlib_root, zlib_include, _, zlib_library, _)) = &zlib_paths {
-        config.define("ZLIB_ROOT", zlib_root.display().to_string());
-        config.define("ZLIB_INCLUDE_DIR", zlib_include.display().to_string());
-        config.define("ZLIB_LIBRARY", zlib_library.display().to_string());
+    if let Some(zlib) = &zlib_paths {
+        config.define("ZLIB_ROOT", zlib.root.display().to_string());
+        config.define("ZLIB_INCLUDE_DIR", zlib.include.display().to_string());
+        config.define("ZLIB_LIBRARY", zlib.library.display().to_string());
 
-        config.define("Z_INCLUDE_DIR", zlib_include.display().to_string());
-        config.define("Z_LIBRARY", zlib_library.display().to_string());
+        config.define("Z_INCLUDE_DIR", zlib.include.display().to_string());
+        config.define("Z_LIBRARY", zlib.library.display().to_string());
 
     }
 
@@ -294,8 +288,8 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
     if let Some(tiff_lib) = &tiff_lib_dir {
         println!("cargo:rustc-link-search=native={}", tiff_lib.display());
     }
-    if let Some((_, _, zlib_lib_dir, _, _)) = &zlib_paths {
-        println!("cargo:rustc-link-search=native={}", zlib_lib_dir.display());
+    if let Some(zlib) = &zlib_paths {
+        println!("cargo:rustc-link-search=native={}", zlib.lib_dir.display());
     }
 
     // Static archives are order-sensitive on Android/Linux linkers. Emit
@@ -309,8 +303,8 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
     if tiff_lib_dir.is_some() {
         println!("cargo:rustc-link-lib=static=tiff");
     }
-    if let Some((_, _, _, _, zlib_link_name)) = &zlib_paths {
-        println!("cargo:rustc-link-lib=static={zlib_link_name}");
+    if let Some(zlib) = &zlib_paths {
+        println!("cargo:rustc-link-lib=static={}", zlib.link_name);
     }
 
     // This is producing a warning - this directory doesn't exist (on aarch64 anyway)
@@ -324,4 +318,70 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
     );
 
     Ok(proj.join("include"))
+}
+
+fn build_vendored_zlib(out_path: &Path) -> Result<ZlibPaths, Box<dyn std::error::Error>> {
+    eprintln!("feature 'tiff' enabled — building vendored static zlib");
+
+    let zlib_unpack_dir = out_path.join("PROJSRC/zlib");
+    let zlib_src = zlib_unpack_dir.join("zlib-1.3.1");
+    if !zlib_src.exists() {
+        let tar_gz = File::open("PROJSRC/zlib-1.3.1.tar.gz")?;
+        let tar = GzDecoder::new(tar_gz);
+        let mut archive = Archive::new(tar);
+        archive.unpack(&zlib_unpack_dir)?;
+    }
+
+    let root = out_path.join("zlib");
+    let include = root.join("include");
+    let lib_dir = root.join("lib");
+    fs::create_dir_all(&include)?;
+    fs::create_dir_all(&lib_dir)?;
+
+    let mut cfg = cc::Build::new();
+    cfg.warnings(false)
+        .cargo_metadata(false)
+        .out_dir(&lib_dir)
+        .include(&zlib_src)
+        .define("STDC", None)
+        .file(zlib_src.join("adler32.c"))
+        .file(zlib_src.join("compress.c"))
+        .file(zlib_src.join("crc32.c"))
+        .file(zlib_src.join("deflate.c"))
+        .file(zlib_src.join("gzclose.c"))
+        .file(zlib_src.join("gzlib.c"))
+        .file(zlib_src.join("gzread.c"))
+        .file(zlib_src.join("gzwrite.c"))
+        .file(zlib_src.join("infback.c"))
+        .file(zlib_src.join("inffast.c"))
+        .file(zlib_src.join("inflate.c"))
+        .file(zlib_src.join("inftrees.c"))
+        .file(zlib_src.join("trees.c"))
+        .file(zlib_src.join("uncompr.c"))
+        .file(zlib_src.join("zutil.c"));
+
+    if !env::var("TARGET").unwrap_or_default().contains("windows") {
+        cfg.pic(true)
+            .define("_LARGEFILE64_SOURCE", None)
+            .flag("-fvisibility=hidden");
+    }
+
+    cfg.compile("z");
+
+    fs::copy(zlib_src.join("zlib.h"), include.join("zlib.h"))?;
+    fs::copy(zlib_src.join("zconf.h"), include.join("zconf.h"))?;
+
+    let library = if env::var("TARGET").unwrap_or_default().contains("windows-msvc") {
+        lib_dir.join("z.lib")
+    } else {
+        lib_dir.join("libz.a")
+    };
+
+    Ok(ZlibPaths {
+        root,
+        include,
+        lib_dir,
+        library,
+        link_name: "z".to_string(),
+    })
 }
