@@ -199,9 +199,6 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
             fs::remove_dir_all(cmake_package_dir)?;
         }
 
-        println!("cargo:rustc-link-search=native={}", lib_dir.display());
-        println!("cargo:rustc-link-lib=static=tiff");
-
         (Some(include), Some(lib_dir))
     } else {
         eprintln!("feature 'tiff' disabled — skipping libtiff build");
@@ -242,7 +239,7 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         config.define("SQLITE3_LIBRARY", format!("{sqlite_lib_dir}/libsqlite3.a",));
     }
 
-    if let Some((zlib_root, zlib_include, zlib_lib_dir, zlib_library, zlib_link_name)) = &zlib_paths {
+    if let Some((zlib_root, zlib_include, _, zlib_library, _)) = &zlib_paths {
         config.define("ZLIB_ROOT", zlib_root.display().to_string());
         config.define("ZLIB_INCLUDE_DIR", zlib_include.display().to_string());
         config.define("ZLIB_LIBRARY", zlib_library.display().to_string());
@@ -250,8 +247,6 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         config.define("Z_INCLUDE_DIR", zlib_include.display().to_string());
         config.define("Z_LIBRARY", zlib_library.display().to_string());
 
-        println!("cargo:rustc-link-search=native={}", zlib_lib_dir.display());
-        println!("cargo:rustc-link-lib=static={zlib_link_name}");
     }
 
     if let (Some(tiff_inc), Some(tiff_lib)) = (&tiff_include, &tiff_lib_dir) {
@@ -270,8 +265,6 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
 
         config.define("TIFF_LIBRARY", tiff_library.display().to_string());
 
-        println!("cargo:rustc-link-search=native={}", tiff_lib.display());
-        println!("cargo:rustc-link-lib=static=tiff");
     } else {
         eprintln!("disabling TIFF support in PROJ build");
         config.define("ENABLE_TIFF", "OFF");
@@ -291,15 +284,31 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
     // libproj will be built in $OUT_DIR/lib
 
     //proj likes to create proj_d when configured as debug and on MSVC, so link to that one if it exists
+    println!(
+        "cargo:rustc-link-search=native={}",
+        proj.join("lib").display()
+    );
+    if let Some(tiff_lib) = &tiff_lib_dir {
+        println!("cargo:rustc-link-search=native={}", tiff_lib.display());
+    }
+    if let Some((_, _, zlib_lib_dir, _, _)) = &zlib_paths {
+        println!("cargo:rustc-link-search=native={}", zlib_lib_dir.display());
+    }
+
+    // Static archives are order-sensitive on Android/Linux linkers. Emit
+    // consumers first and their dependencies after them, otherwise libtiff can
+    // leave zlib symbols such as deflateParams unresolved in the final cdylib.
     if proj.join("lib").join("proj_d.lib").exists() {
         println!("cargo:rustc-link-lib=static=proj_d");
     } else {
         println!("cargo:rustc-link-lib=static=proj");
     }
-    println!(
-        "cargo:rustc-link-search=native={}",
-        proj.join("lib").display()
-    );
+    if tiff_lib_dir.is_some() {
+        println!("cargo:rustc-link-lib=static=tiff");
+    }
+    if let Some((_, _, _, _, zlib_link_name)) = &zlib_paths {
+        println!("cargo:rustc-link-lib=static={zlib_link_name}");
+    }
 
     // This is producing a warning - this directory doesn't exist (on aarch64 anyway)
     println!(
