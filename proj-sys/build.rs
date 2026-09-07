@@ -307,11 +307,11 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         println!("cargo:rustc-link-lib=static={}", zlib.link_name);
     }
 
-    // This is producing a warning - this directory doesn't exist (on aarch64 anyway)
-    println!(
-        "cargo:rustc-link-search={}",
-        &out_path.join("lib64").display()
-    );
+    // Some platforms install libraries in lib64; do not emit a missing search path.
+    let lib64 = out_path.join("lib64");
+    if lib64.is_dir() {
+        println!("cargo:rustc-link-search={}", lib64.display());
+    }
     println!(
         "cargo:rustc-link-search={}",
         &out_path.join("build/lib").display()
