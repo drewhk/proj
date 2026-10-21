@@ -234,6 +234,13 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
     }
     if let Ok(sqlite_lib_dir) = std::env::var("DEP_SQLITE3_LIB_DIR") {
         config.define("SQLITE3_LIBRARY", format!("{sqlite_lib_dir}/libsqlite3.a",));
+        if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("android") {
+            // Bundled SQLite uses pread/pwrite on Android (__linux__). Tell PROJ
+            // so it omits its seek/read fork workaround. That workaround closes
+            // SQLite handles in the fork child, which can deadlock on an
+            // allocator mutex inherited from a thread that no longer exists.
+            config.cxxflag("-DSQLITE_USE_PREAD");
+        }
     }
 
     if let Some(zlib) = &zlib_paths {
