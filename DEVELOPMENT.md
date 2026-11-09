@@ -55,6 +55,30 @@ cloning through the linked native fork, and exercise opaque grid sampling:
 cargo test -p proj-sys --features native_extensions,tiff --test extensions
 ```
 
+## Cubic Lagrange conformance
+
+With `native_extensions`, `proj::extensions::register_cubic_lagrange()` registers
+`rust_cubic_lagrange` for explicit gridshift interpolation or opaque sampling.
+It requires the complete floor(index)-1 through floor(index)+2 window on both
+axes, and rejects nodata or missing stencil nodes. There is no edge fallback;
+the Czech authority's boundary policy is still unverified.
+
+The isolated Czech tests use the app's preserved authority captures and grids,
+not copied fixture data in this wrapper. They are explicitly ignored in ordinary
+wrapper runs because that external test-data directory is required. Run them as:
+
+```powershell
+python <app-checkout>/test_data/czechia/prepare_interpolation_data.py
+$env:PROJ_CZECH_DATA = '<app-checkout>/test_data'
+cargo test -p proj --features native_extensions,tiff --lib extensions::tests
+cargo test -p proj --features native_extensions,tiff --test czech_interpolation -- --ignored --nocapture
+```
+
+The preparation verifies capture and grid hashes. Both reference tests require
+zero millimetre-rounded mismatch counts; raw maxima are reported for inspection.
+The horizontal test also checks the mathematical inverse. These tests exclude
+the Czech Helmert/projection steps and do not establish full-pipeline conformance.
+
 ## Bindings
 
 Bindings were generated with the following command:

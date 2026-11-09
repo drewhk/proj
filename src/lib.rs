@@ -243,6 +243,8 @@ mod geo_types;
 #[macro_use]
 extern crate approx;
 
+#[cfg(feature = "native_extensions")]
+pub mod extensions;
 mod proj;
 mod transform;
 pub use transform::{Transform, TransformError};
