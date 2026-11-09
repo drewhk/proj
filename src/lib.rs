@@ -111,6 +111,8 @@
 //! - `bundled_proj`: builds `libproj` from source bundled in the `proj-sys` crate.
 //!   Note that this feature requires Sqlite3 and `libtiff` to be present on your
 //!   system.
+//! - `native_extensions`: enables the local extension ABI in `proj-sys` and
+//!   implies `bundled_proj`. Grid sampling also requires `tiff`.
 //! - `network`: exposes APIs which, when enabled, can fetch grid data from the internet to improve
 //!   projection accuracy. See [`enable_network`](struct.ProjBuilder.html#method.enable_network)
 //!   for details.

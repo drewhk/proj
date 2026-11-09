@@ -22,6 +22,10 @@ Cargo initializes it automatically for Git dependencies. See
 
 ## Features
 
+- `native_extensions` - exposes our native fork's operation registration,
+  interpolation and opaque grid APIs through generated unsafe bindings.
+  Implies `bundled_proj`; grid access also requires `tiff`. See
+  [`DEVELOPMENT.md`](../DEVELOPMENT.md#native-extension-bindings).
 - `bundled_proj` - forces building libproj from source even if an acceptable
   version could be found on your system.  Note that SQLite3 must be
   present on your system if you wish to use this feature, and that it builds

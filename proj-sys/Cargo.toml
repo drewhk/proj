@@ -26,6 +26,8 @@ tar = "0.4.40"
 [features]
 nobuild = []
 bundled_proj = []
+# The local extension ABI is only provided by our bundled native fork.
+native_extensions = ["bundled_proj"]
 # `pkg_config` feature is deprecated and does nothing
 pkg_config = []
 network = ["tiff"]

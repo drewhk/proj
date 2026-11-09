@@ -74,6 +74,12 @@ fn generate_bindings(include_path: std::path::PathBuf) -> Result<(), Box<dyn std
         .size_t_is_usize(true)
         .blocklist_type("max_align_t");
 
+    let bindings = if cfg!(feature = "native_extensions") {
+        bindings.clang_arg("-DPROJ_SYS_NATIVE_EXTENSIONS")
+    } else {
+        bindings
+    };
+
     let bindings = {
         let ndk_path = env::var("ANDROID_NDK").expect("ANDROID_NDK not set");
         let target = env::var("TARGET").expect("TARGET not set");
