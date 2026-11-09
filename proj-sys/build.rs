@@ -19,6 +19,9 @@ fn main() {} // Skip the build script on docs.rs
 
 #[cfg(not(feature = "nobuild"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=wrapper.h");
+    println!("cargo:rerun-if-changed=PROJSRC");
     let include_path = if cfg!(feature = "bundled_proj") {
         eprintln!("feature flags specified source build");
         build_from_source()?
@@ -129,6 +132,13 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
 
+    let proj_src = PathBuf::from("PROJSRC/proj");
+    if !proj_src.join("CMakeLists.txt").is_file() {
+        return Err(
+            "Missing PROJ source submodule. Run git submodule update --init --recursive.".into(),
+        );
+    }
+
     let zlib_paths = if cfg!(feature = "tiff") {
         Some(build_vendored_zlib(&out_path)?)
     } else {
@@ -202,13 +212,7 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         (None, None)
     };
 
-    let path = format!("PROJSRC/proj-{MINIMUM_PROJ_VERSION}.tar.gz");
-    let tar_gz = File::open(path)?;
-    let tar = GzDecoder::new(tar_gz);
-    let mut archive = Archive::new(tar);
-    archive.unpack(out_path.join("PROJSRC/proj"))?;
-    let mut config =
-        cmake::Config::new(out_path.join(format!("PROJSRC/proj/proj-{MINIMUM_PROJ_VERSION}")));
+    let mut config = cmake::Config::new(&proj_src);
     config.define("ANDROID_STL", "c++_static");
     config.define("APP_STL", "c++_static");
     config.define("BUILD_SHARED_LIBS", "OFF");
@@ -306,6 +310,12 @@ fn build_from_source() -> Result<std::path::PathBuf, Box<dyn std::error::Error>>
         println!("cargo:rustc-link-lib=static=proj_d");
     } else {
         println!("cargo:rustc-link-lib=static=proj");
+    }
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        // Static PROJ uses SHGetKnownFolderPath and CoTaskMemFree. CMake's
+        // system-library dependencies must also reach the final Rust linker.
+        println!("cargo:rustc-link-lib=shell32");
+        println!("cargo:rustc-link-lib=ole32");
     }
     if tiff_lib_dir.is_some() {
         println!("cargo:rustc-link-lib=static=tiff");

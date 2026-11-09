@@ -15,6 +15,11 @@ installation on your system using
 If an acceptable installation is not found, proj-sys will attempt to build
 libproj from source bundled in the crate.
 
+In this fork, native PROJ source is pinned as a Git submodule. For local
+checkouts, run `git submodule update --init --recursive` before building.
+Cargo initializes it automatically for Git dependencies. See
+[`DEVELOPMENT.md`](../DEVELOPMENT.md) for the stable-release update workflow.
+
 ## Features
 
 - `bundled_proj` - forces building libproj from source even if an acceptable
