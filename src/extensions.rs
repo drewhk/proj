@@ -6,6 +6,9 @@ use proj_sys::*;
 use std::ffi::{c_int, CStr};
 use std::sync::OnceLock;
 
+mod romgeo;
+pub use romgeo::register_romgeo_interpolators;
+
 /// Name used in `+proj=gridshift +interpolation=rust_cubic_lagrange` and raw sampling.
 pub const CUBIC_LAGRANGE: &CStr = c"rust_cubic_lagrange";
 
