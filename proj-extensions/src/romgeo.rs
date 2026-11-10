@@ -4,7 +4,7 @@
 //! Nearest sampling uses Python-compatible ties-to-even, without extrapolation.
 use super::*;
 
-pub fn register_romgeo_interpolators() -> Result<(), ProjError> {
+pub fn register_romgeo_interpolators() -> Result<(), RegistrationError> {
     static STATUS: OnceLock<c_int> = OnceLock::new();
     let code = *STATUS.get_or_init(|| unsafe {
         let context = proj_context_create();
@@ -33,9 +33,10 @@ pub fn register_romgeo_interpolators() -> Result<(), ProjError> {
     if code == 0 {
         Ok(())
     } else {
-        Err(ProjError::Projection(format!(
-            "ROMGEO interpolation registration failed: {code}"
-        )))
+        Err(RegistrationError {
+            kernel: "ROMGEO interpolation",
+            code,
+        })
     }
 }
 
@@ -226,7 +227,7 @@ mod tests {
         register_romgeo_interpolators().unwrap();
         let path = std::ffi::CString::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/proj-sys/PROJSRC/proj/data/tests/test_vgrid_nodata.tif"
+            "/../proj-sys/PROJSRC/proj/data/tests/test_vgrid_nodata.tif"
         ))
         .unwrap();
         unsafe {

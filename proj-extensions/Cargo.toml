@@ -1,0 +1,15 @@
+[package]
+name = "proj-extensions"
+version = "0.1.0"
+description = "Interpolation kernels for the native PROJ extension ABI"
+repository = "https://github.com/drewhk/proj"
+license = "MIT OR Apache-2.0"
+edition = "2021"
+rust-version = "1.82"
+publish = false
+
+[dependencies]
+proj-sys = { version = "0.26.0", path = "../proj-sys", features = ["native_extensions"] }
+
+[features]
+tiff = ["proj-sys/tiff"]

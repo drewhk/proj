@@ -1,13 +1,31 @@
 //! Reusable algorithms registered through our native fork's extension ABI.
 //! Registration is explicit; importing this module does not change PROJ defaults.
 
-use crate::ProjError;
 use proj_sys::*;
 use std::ffi::{c_int, CStr};
 use std::sync::OnceLock;
 
 mod romgeo;
 pub use romgeo::register_romgeo_interpolators;
+
+/// Failure to register an interpolation kernel with the native PROJ runtime.
+#[derive(Debug)]
+pub struct RegistrationError {
+    pub kernel: &'static str,
+    pub code: c_int,
+}
+
+impl std::fmt::Display for RegistrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} registration failed with PROJ error {}",
+            self.kernel, self.code
+        )
+    }
+}
+
+impl std::error::Error for RegistrationError {}
 
 /// Name used in `+proj=gridshift +interpolation=rust_cubic_lagrange` and raw sampling.
 pub const CUBIC_LAGRANGE: &CStr = c"rust_cubic_lagrange";
@@ -19,7 +37,7 @@ pub const CUBIC_LAGRANGE: &CStr = c"rust_cubic_lagrange";
 /// or shifted edge stencil. This describes the supported interior domain; it
 /// does not claim to reproduce any authority's boundary policy.
 /// Grid sampling requires the `tiff` feature. Repeated calls are safe.
-pub fn register_cubic_lagrange() -> Result<(), ProjError> {
+pub fn register_cubic_lagrange() -> Result<(), RegistrationError> {
     static STATUS: OnceLock<c_int> = OnceLock::new();
     let code = *STATUS.get_or_init(|| unsafe {
         // Keep registration errors off the process-wide default context.
@@ -39,9 +57,10 @@ pub fn register_cubic_lagrange() -> Result<(), ProjError> {
     if code == 0 {
         Ok(())
     } else {
-        Err(ProjError::Projection(format!(
-            "Cubic Lagrange registration failed with PROJ error {code}"
-        )))
+        Err(RegistrationError {
+            kernel: "Cubic Lagrange",
+            code,
+        })
     }
 }
 
@@ -138,7 +157,7 @@ mod tests {
         register_cubic_lagrange().unwrap();
         let path = std::ffi::CString::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/proj-sys/PROJSRC/proj/data/tests/test_vgrid_nodata.tif"
+            "/../proj-sys/PROJSRC/proj/data/tests/test_vgrid_nodata.tif"
         ))
         .unwrap();
         unsafe {

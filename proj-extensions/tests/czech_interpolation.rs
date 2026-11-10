@@ -1,8 +1,8 @@
 //! Isolated grid conformance, deliberately excluding Helmert and map projection.
 //! Run explicitly with PROJ_CZECH_DATA pointing at Navtron's test_data directory.
-#![cfg(all(feature = "native_extensions", feature = "tiff"))]
+#![cfg(feature = "tiff")]
 
-use proj::extensions::{register_cubic_lagrange, CUBIC_LAGRANGE};
+use proj_extensions::{register_cubic_lagrange, CUBIC_LAGRANGE};
 use proj_sys::*;
 use std::ffi::CString;
 use std::path::PathBuf;

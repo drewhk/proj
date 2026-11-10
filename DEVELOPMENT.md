@@ -36,7 +36,7 @@ updating the wrapper pin, update the application's Cargo lockfile as well.
 
 ## Native extension bindings
 
-Enable `native_extensions` on `proj` or `proj-sys` to generate the local C ABI
+Enable `native_extensions` on `proj-sys` to generate the local C ABI
 bindings in `proj-sys`. The feature implies `bundled_proj`: a system PROJ cannot
 provide these symbols. Without it, the ordinary system-library path and public
 bindings remain unchanged. Grid sampling additionally requires `tiff`.
@@ -55,9 +55,17 @@ cloning through the linked native fork, and exercise opaque grid sampling:
 cargo test -p proj-sys --features native_extensions,tiff --test extensions
 ```
 
+## Rust interpolation extensions
+
+`proj-extensions` depends only on `proj-sys`, enabling its native extension ABI.
+It contains cubic Lagrange, CNC bicubic and nearest-neighbour interpolation,
+with explicit registration and a small native registration error type.
+It does not depend on the high-level `proj` crate. Native PROJ remains owned
+and built by `proj-sys`; the app and GDAL must resolve to that same package.
+
 ## Cubic Lagrange conformance
 
-With `native_extensions`, `proj::extensions::register_cubic_lagrange()` registers
+`proj_extensions::register_cubic_lagrange()` registers
 `rust_cubic_lagrange` for explicit gridshift interpolation or opaque sampling.
 It requires the complete floor(index)-1 through floor(index)+2 window on both
 axes, and rejects nodata or missing stencil nodes. There is no edge fallback;
@@ -70,8 +78,8 @@ wrapper runs because that external test-data directory is required. Run them as:
 ```powershell
 python <app-checkout>/test_data/czechia/prepare_interpolation_data.py
 $env:PROJ_CZECH_DATA = '<app-checkout>/test_data'
-cargo test -p proj --features native_extensions,tiff --lib extensions::tests
-cargo test -p proj --features native_extensions,tiff --test czech_interpolation -- --ignored --nocapture
+cargo test -p proj-extensions --features tiff --lib
+cargo test -p proj-extensions --features tiff --test czech_interpolation -- --ignored --nocapture
 ```
 
 The preparation verifies capture and grid hashes. Both reference tests require
